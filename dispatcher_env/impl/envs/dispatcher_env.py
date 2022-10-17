@@ -76,7 +76,7 @@ class DispatcherEnv(gym.Env):
             picked_tenants = self.np_random.choice(self.tenants_number, size=self.np_random.integers(1, self.tenants_number / 2))
             for tenant in picked_tenants:
                 if self.incoming_tasks[tenant] > 0:
-                    pick_tasks = self.np_random.integers(1, np.minimum(10, self.incoming_tasks[tenant]))
+                    pick_tasks = self.np_random.integers(1, np.minimum(50, self.incoming_tasks[tenant]))
                     self.incoming_tasks[tenant] -= pick_tasks
                     self._tasks_queue[tenant] += pick_tasks
                     for _ in range(pick_tasks):
@@ -127,7 +127,7 @@ class DispatcherEnv(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
 
-        return observation, reward, terminal, False, info
+        return observation, reward, terminal, False
 
     def render(self):
         if self.render_mode == "rgb_array":
