@@ -69,7 +69,7 @@ class DispatcherEnv(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
 
-        return observation
+        return observation, info
 
     def step(self, action):
         if self.np_random.random() > 0.8:
@@ -127,7 +127,7 @@ class DispatcherEnv(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
 
-        return observation, reward, terminal, False
+        return observation, reward, terminal, False, info
 
     def render(self):
         if self.render_mode == "rgb_array":
