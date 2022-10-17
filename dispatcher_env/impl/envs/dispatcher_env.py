@@ -69,10 +69,10 @@ class DispatcherEnv(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
 
-        return observation, info
+        return observation
 
     def step(self, action):
-        if self.np_random.random() > 0.5:
+        if self.np_random.random() > 0.8:
             picked_tenants = self.np_random.choice(self.tenants_number, size=self.np_random.integers(1, self.tenants_number / 2))
             for tenant in picked_tenants:
                 if self.incoming_tasks[tenant] > 0:
