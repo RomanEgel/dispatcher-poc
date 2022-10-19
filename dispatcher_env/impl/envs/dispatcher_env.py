@@ -26,8 +26,9 @@ class DispatcherEnv(gym.Env):
             }
         )
 
-        # We have 'number_of_tenants' + 1 actions, corresponding to picking task from corresponding tenant or Nothing (-1)
-        self.action_space = spaces.Discrete(number_of_tenants + 1, start=-1)
+        # We have 'number_of_tenants' + 1 actions, corresponding to picking task from corresponding tenant or Nothing (0)
+        self.action_space = spaces.Discrete(number_of_tenants + 1)
+        self.none_action = number_of_tenants
 
         self.tasks_data = None
         self.incoming_tasks = None
@@ -86,7 +87,7 @@ class DispatcherEnv(gym.Env):
         total_tasks = np.sum(self._tasks_queue)
 
         terminal = False
-        if action != -1 and (self._tasks_queue[action] == 0):
+        if action != self.none_action and (self._tasks_queue[action] == 0):
             reward -= 100
         else:
             time_per_task = np.zeros(self.tenants_number)
@@ -115,7 +116,7 @@ class DispatcherEnv(gym.Env):
             if var > 1.0:
                 reward -= np.minimum(5.0, var)
 
-            if action != -1 and total_tasks == 0:
+            if action != self.none_action and total_tasks == 0:
                 reward += 100
 
         if np.sum(self.incoming_tasks) == 0 and total_tasks == 0:
