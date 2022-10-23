@@ -3,6 +3,7 @@ from gym import spaces
 import pygame
 import numpy as np
 import time
+from dispatcher_env.impl.envs.loader import TaskLoader
 
 
 class DispatcherEnv(gym.Env):
@@ -20,18 +21,15 @@ class DispatcherEnv(gym.Env):
         # moving average of number of tasks (MA_num_of_tasks)
         self.observation_space = spaces.Dict(
             {
-                "tasks_queue": spaces.Box(0, 100000, shape=[self.tenants_number], dtype=int),
-                "ma_tasks_duration": spaces.Box(0, 1000,  shape=[self.tenants_number], dtype=float),
-                "ma_tasks_number": spaces.Box(0, 1000, shape=[self.tenants_number], dtype=float),
+                "tasks_queue": spaces.Box(0, 1000, shape=[self.tenants_number], dtype=int)
             }
         )
 
-        # We have 'number_of_tenants' + 1 actions, corresponding to picking task from corresponding tenant or Nothing (0)
+        # We have 'number_of_tenants' + 1 actions, corresponding to picking task from corresponding tenant or Nothing (==number_of_tenants)
         self.action_space = spaces.Discrete(number_of_tenants + 1)
         self.none_action = number_of_tenants
 
-        self.tasks_data = None
-        self.incoming_tasks = None
+        self.loader = TaskLoader(np_random=self.np_random, number_of_tenants=number_of_tenants)
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -47,10 +45,10 @@ class DispatcherEnv(gym.Env):
         self.clock = None
 
     def _get_obs(self):
-        return {"tasks_queue": self._tasks_queue, "ma_tasks_duration": self._ma_tasks_duration, "ma_tasks_number": self._ma_tasks_number}
+        return {"tasks_queue": self._tasks_queue}
 
     def _get_info(self):
-        return {"tasks_data": self.tasks_data, "incoming_tasks": self.incoming_tasks}
+        return {}
 
     def reset(self, seed=None, options=None):
         # We need the following line to seed self.np_random
@@ -58,11 +56,8 @@ class DispatcherEnv(gym.Env):
 
         # zero tenants tasks
         self._tasks_queue = np.zeros((self.tenants_number), dtype=int)
-        self._ma_tasks_duration = np.zeros((self.tenants_number))
-        self._ma_tasks_number = np.zeros((self.tenants_number))
-        self.tasks_data = [[] for _ in range(self.tenants_number)]
-
-        self.incoming_tasks = self.np_random.integers(10000, 100000, size=self.tenants_number)
+        self.loader.reset()
+        self._tasks_queue += self.loader.perform_step()
 
         observation = self._get_obs()
         info = self._get_info()
@@ -73,55 +68,31 @@ class DispatcherEnv(gym.Env):
         return observation, info
 
     def step(self, action):
-        if self.np_random.random() > 0.8:
-            picked_tenants = self.np_random.choice(self.tenants_number, size=self.np_random.integers(1, self.tenants_number / 2))
-            for tenant in picked_tenants:
-                if self.incoming_tasks[tenant] > 0:
-                    pick_tasks = self.np_random.integers(1, np.minimum(50, self.incoming_tasks[tenant]))
-                    self.incoming_tasks[tenant] -= pick_tasks
-                    self._tasks_queue[tenant] += pick_tasks
-                    for _ in range(pick_tasks):
-                        self.tasks_data[tenant].append(time.time())
-
         reward = 0
-        total_tasks = np.sum(self._tasks_queue)
+        tasks_count = np.sum(self._tasks_queue)
 
         terminal = False
-        if action != self.none_action and (self._tasks_queue[action] == 0):
-            reward -= 100
+        if action == self.none_action:
+            if tasks_count > 0:
+                reward = -10
         else:
-            time_per_task = np.zeros(self.tenants_number)
-            for tenant in range(self.tenants_number):
-                if action == tenant:
-                    self._tasks_queue[tenant] -= 1
-                    self.tasks_data[tenant].pop(0)
-                    total_tasks -= 1
-                    reward += 1
-                tasks_num = self._tasks_queue[tenant]
+            if tasks_count < 1:
+                reward = -5
+            elif self._tasks_queue[action] < 1:
+                reward = -1
+            else:
+                self._tasks_queue[action] -= 1
+                tasks_count -= 1
+                reward += 1
 
-                if tasks_num < 1:
-                    tasks_duration = 0
-                    time_per_task[tenant] = 0
-                else:
-                    tasks_duration = self.tasks_data[tenant][tasks_num - 1] - self.tasks_data[tenant][0]
-                    time_per_task[tenant] = tasks_duration / tasks_num
+                if tasks_count < 1:
+                    reward += 10
 
-                    reward += np.maximum(-5.0, (self._ma_tasks_duration[tenant] - tasks_duration) / self.tenants_number)
-                    reward += np.maximum(-5.0, (self._ma_tasks_number[tenant] - tasks_num) / self.tenants_number)
-
-                self._ma_tasks_duration[tenant] = 0.9 * self._ma_tasks_duration[tenant] + 0.1 * (tasks_duration)
-                self._ma_tasks_number[tenant] = 0.9 * self._ma_tasks_number[tenant] + 0.1 * (tasks_num)
-
-            var = np.std(time_per_task)
-            if var > 1.0:
-                reward -= np.minimum(5.0, var)
-
-            if action != self.none_action and total_tasks == 0:
-                reward += 100
-
-        if np.sum(self.incoming_tasks) == 0 and total_tasks == 0:
+        if self.loader.is_empty() and tasks_count < 1:
             terminal = True
+            reward = 100
 
+        self._tasks_queue += self.loader.perform_step()
         observation = self._get_obs()
         info = self._get_info()
 
